@@ -2,8 +2,10 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "./src",
+    "target": "es2020",
     "strict": true,
-    "module": "es2015",
+    "module": "nodenext",
+        "moduleResolution": "nodenext",
     "esModuleInterop": true
   },
   "exclude": ["./Router/**/*.ts", "./Controllers/**/*.ts", "./Services/**/*.ts", "./Models/**/*.ts" ]

@@ -15,10 +15,113 @@ datasource db {
 }
 
 model User {
-  uuid      String   @id @default(uuid())
-  username  String? // by default 191 length
-  email     String   @unique
-  password  String
+  uuid             String         @id @default(uuid())
+  username         String? // by default 191 length
+  email            String         @unique
+  tenantId         String // id que identifica de que pagina proviene el cliente
+  password         String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  role             Role           @default(CLIENT)
+  RefreshToken     RefreshToken[]
+  admin            AdminUser?     @relation("UserAdmin") // solo nombre de la relación
+  client           ClientUser?    @relation("UserClient") // solo nombre de la relación
+  AdminUser        AdminUser?     @relation(fields: [adminUserUserId], references: [userId])
+  adminUserUserId  String?
+  ClientUser       ClientUser?    @relation(fields: [clientUserUserId], references: [userId])
+  clientUserUserId String?
+}
+
+model RefreshToken {
+  id        Int      @id @default(autoincrement())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [uuid])
+  expiresAt DateTime
   createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+}
+
+model AdminUser {
+  userId String @id
+  user   User   @relation("UserAdmin", fields: [userId], references: [uuid])
+  level  Int    @default(1) // 1 -> 2 -> 3 lower to higher
+  User   User[]
+}
+
+model ClientUser {
+  userId String @id
+  user   User   @relation("UserClient", fields: [userId], references: [uuid])
+  User   User[]
+}
+
+model Product {
+  id          String       @id @default(uuid())
+  tenantId    String // Para saber a qué página/cliente pertenece
+  name        String
+  description String?
+  price       Float
+  currency    String       @default("USD")
+  stock       Int? // Para productos físicos, opcional para digitales o servicios
+  type        ProductType
+  categoryId  String? // FK opcional
+  category    Category?    @relation(fields: [categoryId], references: [id])
+  attributes  Json? // Campos dinámicos según el tipo de producto
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  BasketItem  BasketItem[]
+}
+
+enum ProductType {
+  PHYSICAL
+  DIGITAL
+  SERVICE
+}
+
+enum Role {
+  ADMIN
+  CLIENT
+}
+
+model Category {
+  id          String     @id @default(uuid())
+  tenantId    String // Para multi-tenant, a qué página pertenece
+  name        String
+  description String?
+  parentId    String? // Para categorías anidadas
+  parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    Category[] @relation("CategoryHierarchy")
+  attributes  Json? // Campos extra según tipo de productos
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  products Product[] // relación con productos
+}
+
+model Basket {
+  id        String       @id @default(uuid())
+  userId    String? // Opcional si es guest
+  tenantId  String // Para multi-tenant
+  items     BasketItem[]
+  status    BasketStatus @default(PENDING)
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+}
+
+model BasketItem {
+  id         String   @id @default(uuid())
+  basketId   String
+  basket     Basket   @relation(fields: [basketId], references: [id])
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int      @default(1)
+  price      Float // precio al momento de agregar al carrito
+  attributes Json? // opciones específicas (ej: color, talla, extras)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+enum BasketStatus {
+  PENDING // carrito activo, sin checkout
+  COMPLETED // carrito convertido en pedido
+  CANCELLED // carrito abandonado o eliminado
 }
