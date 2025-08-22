@@ -14,7 +14,7 @@ app.use(express.json(), cors());
 //tenant middleware
 app.use(tenantMiddleware);
 
-app.use("/api/common", Router.commonRoutes);
+app.use("/api/common/", Router.commonRoutes);
 app.use("/api/info/", Router.infoRoutes);
 app.use("/api/stores/", Router.storeRoutes);
 app.use("/api/services/", Router.serviceRoutes);

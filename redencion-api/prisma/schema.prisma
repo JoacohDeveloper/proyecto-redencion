@@ -14,22 +14,38 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model Tenant {
+  uuid        String        @id @default(uuid())
+  tenant      String        @unique
+  User        User[]
+  Product     Product[]
+  Category    Category[]
+  Basket      Basket[]
+  Order       Order[]
+  EmailConfig EmailConfig[]
+  EmailLog    EmailLog[]
+}
+
 model User {
-  uuid             String         @id @default(uuid())
-  username         String? // by default 191 length
-  email            String         @unique
-  tenantId         String // id que identifica de que pagina proviene el cliente
-  password         String
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  role             Role           @default(CLIENT)
-  RefreshToken     RefreshToken[]
-  admin            AdminUser?     @relation("UserAdmin") // solo nombre de la relación
-  client           ClientUser?    @relation("UserClient") // solo nombre de la relación
-  AdminUser        AdminUser?     @relation(fields: [adminUserUserId], references: [userId])
+  uuid         String         @id @default(uuid())
+  username     String? // by default 191 length
+  email        String         @unique
+  tenantId     String // id que identifica de que pagina proviene el cliente
+  password     String
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  role         Role           @default(CLIENT)
+  RefreshToken RefreshToken[]
+
+  tenant Tenant @relation(fields: [tenantId], references: [uuid])
+
+  admin            AdminUser?  @relation("UserAdmin") // solo nombre de la relación
+  client           ClientUser? @relation("UserClient") // solo nombre de la relación
+  AdminUser        AdminUser?  @relation(fields: [adminUserUserId], references: [userId])
   adminUserUserId  String?
-  ClientUser       ClientUser?    @relation(fields: [clientUserUserId], references: [userId])
+  ClientUser       ClientUser? @relation(fields: [clientUserUserId], references: [userId])
   clientUserUserId String?
+  Order            Order[]
 }
 
 model RefreshToken {
@@ -65,10 +81,14 @@ model Product {
   type        ProductType
   categoryId  String? // FK opcional
   category    Category?    @relation(fields: [categoryId], references: [id])
+  tenant      Tenant       @relation(fields: [tenantId], references: [uuid])
   attributes  Json? // Campos dinámicos según el tipo de producto
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
   BasketItem  BasketItem[]
+
+  Media     Media[]
+  OrderItem OrderItem[]
 }
 
 enum ProductType {
@@ -89,6 +109,7 @@ model Category {
   description String?
   parentId    String? // Para categorías anidadas
   parent      Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  tenant      Tenant     @relation(fields: [tenantId], references: [uuid])
   children    Category[] @relation("CategoryHierarchy")
   attributes  Json? // Campos extra según tipo de productos
   createdAt   DateTime   @default(now())
@@ -102,6 +123,7 @@ model Basket {
   userId    String? // Opcional si es guest
   tenantId  String // Para multi-tenant
   items     BasketItem[]
+  tenant    Tenant       @relation(fields: [tenantId], references: [uuid])
   status    BasketStatus @default(PENDING)
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
@@ -124,4 +146,130 @@ enum BasketStatus {
   PENDING // carrito activo, sin checkout
   COMPLETED // carrito convertido en pedido
   CANCELLED // carrito abandonado o eliminado
+}
+
+model Media {
+  id       String    @id @default(uuid())
+  type     MediaType @default(IMAGE) // IMAGE o VIDEO
+  url      String
+  publicId String
+  format   String?
+  width    Int?
+  height   Int?
+  duration Float? // solo videos
+  size     Int?
+
+  productId String
+  product   Product @relation(fields: [productId], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+enum MediaType {
+  IMAGE
+  VIDEO
+}
+
+model Payment {
+  id           String          @id @default(cuid())
+  orderId      String // Relación con tu Order
+  amount       Float
+  currency     String // "USD", "UYU", "ARS", etc.
+  status       PaymentStatus
+  provider     PaymentProvider
+  providerId   String // ID de Stripe charge o de MercadoPago payment
+  providerData Json // Toda la respuesta del proveedor (JSON completo)
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+
+  order Order @relation(fields: [orderId], references: [id])
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  STRIPE
+  MERCADOPAGO
+}
+
+model Order {
+  id          String      @id @default(cuid())
+  tenantId    String
+  userId      String
+  totalAmount Float
+  currency    String
+  status      OrderStatus
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  // Relaciones
+  user     User        @relation(fields: [userId], references: [uuid])
+  tenant   Tenant      @relation(fields: [tenantId], references: [uuid])
+  items    OrderItem[]
+  payments Payment[]
+}
+
+model OrderItem {
+  id         String @id @default(cuid())
+  orderId    String
+  productId  String
+  quantity   Int
+  unitPrice  Float
+  totalPrice Float
+
+  // Relaciones
+  order   Order   @relation(fields: [orderId], references: [id])
+  product Product @relation(fields: [productId], references: [id])
+}
+
+enum OrderStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  REFUNDED
+}
+
+model EmailConfig {
+  id        String  @id @default(cuid())
+  tenantId  String
+  provider  String // "sendgrid", "ses", "smtp"
+  apiKey    String? // para servicios tipo SendGrid
+  smtpHost  String? // si usás SMTP
+  smtpPort  Int?
+  smtpUser  String?
+  smtpPass  String?
+  fromEmail String // dirección de origen
+  fromName  String?
+
+  tenant Tenant @relation(fields: [tenantId], references: [uuid])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model EmailLog {
+  id       String      @id @default(cuid())
+  tenantId String
+  to       String
+  subject  String
+  body     String
+  status   EmailStatus
+  provider String // quién lo mandó
+  errorMsg String? // si falló
+
+  tenant Tenant @relation(fields: [tenantId], references: [uuid])
+
+  createdAt DateTime @default(now())
+}
+
+enum EmailStatus {
+  PENDING
+  SENT
+  FAILED
 }

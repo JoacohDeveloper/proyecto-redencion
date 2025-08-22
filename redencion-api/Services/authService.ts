@@ -12,15 +12,46 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 export const authService = {
   register: async (email: string, password: string, tenantId: string) => {
     const hashed = await bcrypt.hash(password, SALT_ROUNDS);
-    return prisma.user.create({
-      data: {
-        email,
-        password: hashed,
-        tenantId,
-        role: "CLIENT",
-        client: {},
+
+    const dbTenant = await prisma.tenant.findUnique({
+      where: {
+        tenant: tenantId,
       },
     });
+
+    if (!dbTenant) {
+      return await prisma.$transaction(async (tx) => {
+        const newTenant = await tx.tenant.create({
+          data: { tenant: tenantId },
+        });
+
+        const user = await tx.user.create({
+          data: {
+            email,
+            password: hashed,
+            tenantId: newTenant.uuid,
+            role: "CLIENT",
+            client: {
+              create: {},
+            },
+          },
+        });
+
+        return { newTenant, user };
+      });
+    } else {
+      return await prisma.user.create({
+        data: {
+          email,
+          password: hashed,
+          tenantId: dbTenant.uuid,
+          role: "CLIENT",
+          client: {
+            create: {},
+          },
+        },
+      });
+    }
   },
   login: async (email: string, password: string, tenantId: string) => {
     const user = await prisma.user.findUnique({ where: { email } });

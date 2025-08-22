@@ -2,6 +2,8 @@ import { Router } from "express";
 import { authService } from "../Services/authService";
 import jwt from "jsonwebtoken";
 import prisma from "../src/config/database";
+import { requireAuth } from "../middlewares/authmiddleware";
+import { requireTenantMatch } from "../middlewares/requiretenantmiddleware";
 const router = Router();
 
 //Auth routes
@@ -82,5 +84,15 @@ router.post("/google", async (req, res) => {
 
   res.json(result);
 });
+
+//common private routes
+router.post(
+  "/product/create",
+  requireAuth,
+  requireTenantMatch("host"),
+  async (req, res) => {
+    res.json({ ok: true, tenantId: req.auth!.tenantId });
+  }
+);
 
 export default router;
