@@ -9,7 +9,7 @@ const app = express();
 dotenv.config();
 
 //format middlewares
-app.use(express.json(), cors());
+app.use(express.json(), cors(), express.urlencoded({ extended: true }));
 
 //tenant middleware
 app.use(tenantMiddleware);

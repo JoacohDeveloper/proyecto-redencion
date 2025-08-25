@@ -7,10 +7,44 @@ import {
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
+import { $Enums, Role } from "../generated/prisma";
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+export interface UserData {
+  uuid: string;
+  username: string | null;
+  email: string;
+  password: string;
+  createdAt: Date;
+  updatedAt: Date;
+  role: Role;
+  tenantId: string;
+  adminUserUserId: string | null;
+  clientUserUserId: string | null;
+}
+
+export interface NewTenantData {
+  tenant: string;
+  uuid: string;
+}
+
+export interface RegisterWithTenant {
+  newTenant: NewTenantData;
+  user: UserData;
+}
+
+export interface ErrorMessage {
+  message: string;
+}
+
+export type RegisterReturnData = UserData | RegisterWithTenant | ErrorMessage;
+
 export const authService = {
-  register: async (email: string, password: string, tenantId: string) => {
+  register: async (
+    email: string,
+    password: string,
+    tenantId: string
+  ): Promise<RegisterReturnData> => {
     const hashed = await bcrypt.hash(password, SALT_ROUNDS);
 
     const dbTenant = await prisma.tenant.findUnique({
@@ -40,6 +74,13 @@ export const authService = {
         return { newTenant, user };
       });
     } else {
+      const existsUser = await prisma.user.findFirst({
+        where: {
+          email,
+        },
+      });
+
+      if (existsUser) return { message: "User already exists" };
       return await prisma.user.create({
         data: {
           email,
@@ -55,7 +96,13 @@ export const authService = {
   },
   login: async (email: string, password: string, tenantId: string) => {
     const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || user.tenantId !== tenantId) return null;
+
+    const tenant = await prisma.tenant.findFirst({
+      where: {
+        tenant: tenantId,
+      },
+    });
+    if (!user || user.tenantId !== tenant?.uuid) return null;
 
     const valid = await bcrypt.compare(password, user.password);
     if (!valid) return null;
@@ -64,7 +111,7 @@ export const authService = {
       { userId: user.uuid, tenantId },
       ACCESS_SECRET,
       {
-        expiresIn: "15m",
+        expiresIn: "30m",
       }
     );
 
@@ -132,7 +179,7 @@ export const authService = {
       const accessToken = jwt.sign(
         { userId: user.uuid, tenantId: user.tenantId },
         process.env.ACCESS_SECRET!,
-        { expiresIn: "15m" }
+        { expiresIn: "30m" }
       );
       const refreshToken = jwt.sign(
         { userId: user.uuid, tenantId: user.tenantId },

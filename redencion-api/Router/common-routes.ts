@@ -1,33 +1,74 @@
 import { Router } from "express";
-import { authService } from "../Services/authService";
+import { authService, UserData } from "../Services/authService";
 import jwt from "jsonwebtoken";
 import prisma from "../src/config/database";
 import { requireAuth } from "../middlewares/authmiddleware";
 import { requireTenantMatch } from "../middlewares/requiretenantmiddleware";
+import multer, { memoryStorage } from "multer";
+import { productSchema } from "../Models/productModel";
+import { User } from "../generated/prisma";
+import { RegisterReturnData } from "../Services/authService";
+import { categorySchema } from "../Models/categoryModel";
+import { CategoryService } from "../Services/categoryService";
+import { productService } from "../Services/productService";
 const router = Router();
+
+const storage = multer.memoryStorage(); // en memoria, útil para subir a Cloudinary
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB máx
+  fileFilter: (req, file, cb) => {
+    const allowedImage = ["image/jpeg", "image/png", "image/webp"];
+    const allowedVideo = ["video/mp4", "video/webm", "video/ogg", "video/mov"];
+
+    if (
+      allowedImage.includes(file.mimetype) ||
+      allowedVideo.includes(file.mimetype)
+    ) {
+      cb(null, true);
+    } else {
+      cb(new Error("Only Video or Image are allowed"));
+    }
+  },
+});
 
 //Auth routes
 
 router.post("/register", async (req, res) => {
-  const { email, password } = req.body;
-  const tenantId = (req as any).tenantId;
-  if (!email || !password || !tenantId)
-    return res.status(400).json({ message: "Missing fields" });
   try {
+    const { email, password, tenantId } = req.body;
+    // const tenantId = (req as any).tenantId;
+
+    if (!email || !password || !tenantId)
+      return res.status(400).json({ message: "Missing fields" });
     const user = await authService.register(email, password, tenantId);
-    res.json({ id: user.uuid, email: user.email, tenantId: user.tenantId });
+
+    if ("uuid" in user)
+      res.json({ id: user.uuid, email: user.email, tenantId: user.tenantId });
+    else {
+      res.json(user);
+    }
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
 });
 
 router.post("/login", async (req, res) => {
-  const { email, password } = req.body;
-  const tenantId = (req as any).tenantId;
-  const tokens = await authService.login(email, password, tenantId);
-  if (!tokens) return res.status(401).json({ message: "Invalid credentials" });
+  try {
+    const { email, password, tenantId } = req.body;
 
-  res.json(tokens);
+    // const tenantId = (req as any).tenantId;
+    console.log(tenantId);
+    const tokens = await authService.login(email, password, tenantId);
+    if (!tokens)
+      return res
+        .status(401)
+        .json({ message: "Invalid credentials or not exists" });
+    res.json(tokens);
+  } catch (error) {
+    res.status(500).json({ error: "Invalid Request." });
+  }
 });
 
 // Refresh token
@@ -75,23 +116,308 @@ router.post("/logout", async (req, res) => {
 });
 
 router.post("/google", async (req, res) => {
-  const { idToken, tenantId } = req.body;
-  const result = await authService.google(idToken, tenantId);
+  try {
+    const { idToken, tenantId } = req.body;
+    const result = await authService.google(idToken, tenantId);
 
-  if ("message" in result) {
-    return res.status(401).json(result);
+    if ("message" in result) {
+      return res.status(401).json(result);
+    }
+
+    res.json(result);
+  } catch (error) {
+    res.json({ error: "Invalid Request." }).status(500);
   }
-
-  res.json(result);
 });
 
 //common private routes
+
+//CREATE PRODUCT
 router.post(
-  "/product/create",
+  "/products/create",
+  upload.array("media", 10),
   requireAuth,
-  requireTenantMatch("host"),
+  requireTenantMatch("header"),
   async (req, res) => {
-    res.json({ ok: true, tenantId: req.auth!.tenantId });
+    try {
+      const files = req.files as Express.Multer.File[];
+
+      const { stock, categoryId, price, ...att } = req.body;
+      const tenantId = req.params?.tenant;
+      // validar atributos
+      const validatedData = productSchema.parse({
+        ...att,
+        stock: Number(stock),
+        price: Number(price),
+      });
+
+      //validar imagenes
+
+      files?.forEach((file) => {
+        const isImage = file.mimetype.startsWith("image/");
+        const isVideo = file.mimetype.startsWith("video/");
+
+        if (!isImage && !isVideo) {
+          return res
+            .status(400)
+            .json({ error: `'${file?.filename}' is not a valid file` });
+        }
+      });
+
+      //archivos validados.
+      const allData = { tenantId, categoryId, ...validatedData, files };
+      const result = await productService.create(
+        tenantId,
+        categoryId,
+        allData.name,
+        allData.price,
+        allData.currency,
+        allData.type,
+        allData.description ?? "",
+        allData.stock ?? 1,
+        files
+      );
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: "Invalid Request" });
+    }
+  }
+);
+
+//REMOVE PRODUCT
+
+//MODIFY PRODUCT
+
+//GET PRODUCT // filters etc
+
+router.get(
+  "/products/",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+      const result = await productService.getAll(tenantId);
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// CREATE Category
+
+router.post(
+  "/categories/create",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const { name, description } = req.body;
+      const validatedData = categorySchema.parse({
+        name,
+        description,
+      });
+      const tenantId = req.params?.tenant;
+      const result = await CategoryService.create(
+        validatedData.name ?? "",
+        validatedData.description ?? "",
+        tenantId
+      );
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+//nested
+router.post(
+  "/categories/create/:nestedId",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const { name, description } = req.body;
+      const { nestedId } = req.params;
+      const validatedData = categorySchema.parse({
+        name,
+        description,
+      });
+      const tenantId = req.params?.tenant;
+      const result = await CategoryService.createNested(
+        validatedData.name ?? "",
+        validatedData.description ?? "",
+        tenantId,
+        nestedId
+      );
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+// Category Remove
+router.delete(
+  "/categories/:id",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      if (!id) res.status(400).json({ message: "Bad Request" });
+
+      const tenantId = req.params?.tenant;
+
+      const result = await CategoryService.delete(id, tenantId);
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+// Categories
+router.get(
+  "/categories/",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+
+      const result = await CategoryService.all(tenantId);
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+router.get(
+  "/categories/:name/",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+      const { name } = req.params;
+      if (!name) res.status(400).json({ message: "Bad Request" });
+      let result = await CategoryService.find(tenantId, name);
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+router.get(
+  "/categories/:name/:parent",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+      const { name, parent } = req.params;
+      if (!name) res.status(400).json({ message: "Bad Request" });
+      let result;
+      if (!parent) result = await CategoryService.find(tenantId, name);
+      else result = await CategoryService.findNesteds(tenantId, name, parent);
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+router.get(
+  "/category/:id/",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+      const { id } = req.params;
+      if (!id) res.status(400).json({ message: "Bad Request" });
+      const result = await CategoryService.findById(tenantId, id);
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+// Modify Category
+
+router.put(
+  "/categories/:id",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const { name, description } = req.body;
+      const validatedData = categorySchema.parse({
+        name,
+        description,
+      });
+      const tenantId = req.params?.tenant;
+      const { id } = req.params;
+      if (!id) res.status(400).json({ message: "Bad Request" });
+
+      const result = await CategoryService.modify(
+        validatedData.name ?? "",
+        validatedData.description ?? "",
+        tenantId,
+        id
+      );
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
   }
 );
 

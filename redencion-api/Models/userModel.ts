@@ -1,13 +1,9 @@
-import { User } from "../generated/prisma";
-import prisma from "../src/config/database";
+import TenantInput from "./tenantModel";
 
-const User = {
-  login: () => {},
-  register: () => {},
-  getUser: () => {},
-  getAll: async (): Promise<User[]> => {
-    return prisma.user.findMany();
-  },
-};
-
-export default User;
+export default interface UserInput {
+  username?: string;
+  email: string;
+  password: string;
+  tenant: TenantInput;
+  role?: "CLIENT" | "ADMIN"; // según tu enum Role
+}

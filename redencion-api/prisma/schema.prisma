@@ -60,7 +60,7 @@ model RefreshToken {
 model AdminUser {
   userId String @id
   user   User   @relation("UserAdmin", fields: [userId], references: [uuid])
-  level  Int    @default(1) // 1 -> 2 -> 3 lower to higher
+  level  Int    @default(1) // 1 -> 2 -> 3 lower to higher 
   User   User[]
 }
 

@@ -1,5 +1,5 @@
-export default interface MediaInput {
-  url: string;
+export default interface MediaUpload {
+  url?: string;
   type: "IMAGE" | "VIDEO";
   public_id?: string;
   format?: string;

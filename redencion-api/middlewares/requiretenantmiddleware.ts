@@ -1,8 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 
-export function requireTenantMatch(
-  source: "host" | "param" | "header" = "host"
-) {
+export function requireTenantMatch(source: "host" | "param" | "header") {
   return (req: Request, res: Response, next: NextFunction) => {
     const tokenTenant = req.auth?.tenantId;
     let requestedTenant: string | undefined;
