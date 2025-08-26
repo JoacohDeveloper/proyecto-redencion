@@ -190,19 +190,148 @@ router.post(
 );
 
 //REMOVE PRODUCT
-
-//MODIFY PRODUCT
-
-//GET PRODUCT // filters etc
-
-router.get(
-  "/products/",
+router.delete(
+  "/products/:id",
   requireAuth,
   requireTenantMatch("header"),
   async (req, res) => {
     try {
       const tenantId = req.params?.tenant;
-      const result = await productService.getAll(tenantId);
+      const { id } = req.params;
+
+      if (!id) res.status(400).json({ message: "Bad Request" });
+
+      const result = await productService.delete(tenantId, id);
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+//MODIFY PRODUCT
+router.put(
+  "/products/:id",
+  upload.array("media", 10),
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const { id } = req.params;
+      const tenantId = req.params?.tenant;
+      const files = req.files as Express.Multer.File[];
+
+      const { stock, deletedIds, categoryId, price, ...att } = req.body;
+      if (!id) res.status(400).json({ message: "Bad Request" });
+
+      const validatedData = productSchema.parse({
+        ...att,
+        stock: Number(stock),
+        price: Number(price),
+      });
+
+      files?.forEach((file) => {
+        const isImage = file.mimetype.startsWith("image/");
+        const isVideo = file.mimetype.startsWith("video/");
+
+        if (!isImage && !isVideo) {
+          return res
+            .status(400)
+            .json({ error: `'${file?.filename}' is not a valid file` });
+        }
+      });
+
+      //archivos validados.
+      const allData = { tenantId, categoryId, ...validatedData, files };
+      const result = await productService.modify(
+        tenantId,
+        categoryId,
+        allData.name,
+        allData.price,
+        allData.currency,
+        allData.type,
+        allData.description ?? "",
+        allData.stock ?? 1,
+        files,
+        deletedIds,
+        id
+      );
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {}
+  }
+);
+//GET PRODUCT // filters etc
+router.get("/products", (req, res) => {
+  return res.redirect(`${req.originalUrl}/1`);
+});
+router.get(
+  "/products/:page",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant; // depende de cómo pasás tenant
+      const page = parseInt(req.params.page, 10) || 1; // default 1
+      const pageSize = 3;
+
+      const result = await productService.getAll(tenantId, page, pageSize);
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        page,
+        pageSize,
+        ...result,
+      });
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+router.get(
+  "/product/:id",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+      const { id } = req.params;
+
+      if (!id) res.status(400).json({ message: "Bad Request" });
+      const result = await productService.findById(tenantId, id);
+
+      res.json({
+        ok: true,
+        tenantId: req.auth!.tenantId,
+        result,
+      });
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  }
+);
+
+router.get(
+  "/products/:name",
+  requireAuth,
+  requireTenantMatch("header"),
+  async (req, res) => {
+    try {
+      const tenantId = req.params?.tenant;
+      const { name } = req.params;
+
+      if (!name) res.status(400).json({ message: "Bad Request" });
+      const result = await productService.findByName(tenantId, name);
 
       res.json({
         ok: true,

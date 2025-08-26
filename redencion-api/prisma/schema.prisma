@@ -65,9 +65,11 @@ model AdminUser {
 }
 
 model ClientUser {
-  userId String @id
-  user   User   @relation("UserClient", fields: [userId], references: [uuid])
-  User   User[]
+  userId      String  @id
+  verified    Boolean @default(false)
+  verifyToken String?
+  user        User    @relation("UserClient", fields: [userId], references: [uuid])
+  User        User[]
 }
 
 model Product {
