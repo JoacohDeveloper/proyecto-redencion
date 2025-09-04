@@ -108,7 +108,12 @@ export const authService = {
     if (!valid) return null;
 
     const accessToken = jwt.sign(
-      { userId: user.uuid, tenantId },
+      {
+        userId: user.uuid,
+        tenantId: tenant.uuid,
+        username: user.username,
+        role: user.role,
+      },
       ACCESS_SECRET,
       {
         expiresIn: "30m",
@@ -116,7 +121,12 @@ export const authService = {
     );
 
     const refreshToken = jwt.sign(
-      { userId: user.uuid, tenantId },
+      {
+        userId: user.uuid,
+        tenantId: tenant.uuid,
+        username: user.username,
+        role: user.role,
+      },
       REFRESH_SECRET,
       { expiresIn: "7d" }
     );
@@ -129,7 +139,15 @@ export const authService = {
       },
     });
 
-    return { accessToken, refreshToken };
+    return {
+      tokens: { accessToken, refreshToken },
+      user: {
+        username: user.username,
+        userId: user.uuid,
+        role: user.role,
+        email: user.email,
+      },
+    };
   },
 
   verifyAccessToken: (token: string) => {
@@ -177,12 +195,22 @@ export const authService = {
 
       // Generar JWT de acceso
       const accessToken = jwt.sign(
-        { userId: user.uuid, tenantId: user.tenantId },
+        {
+          userId: user.uuid,
+          tenantId: user.tenantId,
+          username: user.username,
+          role: user.role,
+        },
         process.env.ACCESS_SECRET!,
         { expiresIn: "30m" }
       );
       const refreshToken = jwt.sign(
-        { userId: user.uuid, tenantId: user.tenantId },
+        {
+          userId: user.uuid,
+          tenantId: user.tenantId,
+          username: user.username,
+          role: user.role,
+        },
         process.env.REFRESH_SECRET!,
         { expiresIn: "7d" }
       );

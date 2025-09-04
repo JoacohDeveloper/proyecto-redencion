@@ -374,7 +374,6 @@ router.post(
     }
   }
 );
-
 //nested
 router.post(
   "/categories/create/:nestedId",
@@ -451,7 +450,6 @@ router.get(
     }
   }
 );
-
 router.get(
   "/categories/:name/",
   requireAuth,
